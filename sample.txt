@@ -1,0 +1,1252 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
+
+//READER-WRITER PROBLEM: READER STARVATION SCENARIO
+
+
+namespace OS_RW_PROBLEM_RIMA_20160008
+{
+    class Program
+    {
+        private static int readCount, writeCount;
+        private static int readerMutex, writerMutex, readTry, resourceLock;                 //Instead of Semaphore class, int data type is used for simplicity
+        private static Process[] processPool;
+
+        static void Main(string[] args)
+        {
+            readCount = 0;
+            writeCount = 0;
+            readerMutex = 1;
+            writerMutex = 1;
+            readTry = 1;
+            resourceLock = 1;
+
+            //Create 5 processes (0 reader, 1 writer, 2 reader, 3 writer, and so on)
+
+            processPool = new Process[5];
+            bool j = true;
+            for(int i=0; i<5; i++)
+            {
+                j = !(j ^ false);                          //NOT( j XOR false)
+                processPool[i] = new Process(j);
+                processPool[i].print();
+            }
+
+            //Scenario #1:
+            //P2: READER
+            //P4: READER
+            //P5: WRITER
+
+            //code for not using static everywhere..
+            Program p = new Program();
+
+
+            Console.WriteLine("SCENARIO #1");
+            Console.WriteLine("1. Reader trying to read");
+            p.reader(processPool[1]);
+            Console.WriteLine("2. Reader trying to read");
+            p.reader(processPool[3]);
+            Console.WriteLine("3. Writer trying to write");
+            p.writer(processPool[4]);
+            Console.WriteLine();
+
+            p.clearVars();
+
+            //Scenario #2: write, read, read
+            Console.WriteLine("SCENARIO #2");
+            Console.WriteLine("1. Writer trying to write");
+            p.writer(processPool[4]);
+            Console.WriteLine("2. Reader trying to read");
+            p.reader(processPool[1]);
+            Console.WriteLine("3. Reader trying to read");
+            p.reader(processPool[3]);
+            Console.WriteLine();
+
+            p.clearVars();
+
+            //Scenario #3: read, write, read
+            Console.WriteLine("SCENARIO #3");
+            Console.WriteLine("1. Reader trying to read");
+            p.writer(processPool[1]);
+            Console.WriteLine("2. Writer trying to write");
+            p.reader(processPool[2]);
+            Console.WriteLine("3. Reader trying to read");
+            p.reader(processPool[3]);
+            Console.WriteLine();
+
+            p.clearVars();
+
+            //Scenario #4: read, read, write, write
+            Console.WriteLine("SCENARIO #4");
+            Console.WriteLine("1. Reader trying to read");
+            p.writer(processPool[1]);
+            Console.WriteLine("2. Reader trying to read");
+            p.reader(processPool[3]);
+            Console.WriteLine("3. Writer trying to write");
+            p.reader(processPool[0]);
+            Console.WriteLine("4. Writer trying to write");
+            p.reader(processPool[2]);
+
+            Console.WriteLine();
+
+            p.clearVars();
+
+
+            //Scenario #5: write, read, read, write
+            Console.WriteLine("SCENARIO #5");
+            Console.WriteLine("1. Writer trying to write");
+            p.writer(processPool[0]);
+            Console.WriteLine("2. Reader trying to read");
+            p.reader(processPool[1]);
+            Console.WriteLine("3. Reader trying to read");
+            p.reader(processPool[3]);
+            Console.WriteLine("4. Writer trying to write");
+            p.reader(processPool[2]);
+
+            Console.WriteLine();
+
+            p.clearVars();
+
+            //Scenario #6: read, write, read, write
+            Console.WriteLine("SCENARIO #5");
+            Console.WriteLine("1. Reader trying to read");
+            p.writer(processPool[1]);
+            Console.WriteLine("2. Writer trying to writer");
+            p.reader(processPool[0]);
+            Console.WriteLine("3. Reader trying to read");
+            p.reader(processPool[3]);
+            Console.WriteLine("4. Writer trying to write");
+            p.reader(processPool[2]);
+
+            Console.WriteLine();
+
+            p.clearVars();
+
+
+        }
+
+        public  void reader(Process P)
+        {
+            //ENTRY SECTION 
+            Console.WriteLine("\tEntry Section");
+            printDetails();
+
+
+            wait(ref readTry);                   //Indicate a reader is trying to enter
+            wait(ref readerMutex);               //lock entry section to avoid race condition with other readers
+
+            readCount++;                         //Report yourself as a reader
+
+            if (readCount == 1)                  //checks if you are first reader
+                wait(ref resourceLock);          //if you are first reader, lock  the resource
+
+            signal(ref readerMutex);             //release entry section for other readers
+
+            signal(ref readTry);                 //indicate you are done trying to access the resource
+
+
+            printDetails();
+
+
+            //CRITICAL SECTION
+            Console.WriteLine("\tCritical Section");
+            P.activity();                        //Sample reading process
+
+            printDetails();
+
+            //EXIT SECTION
+            Console.WriteLine("\tExit Section");
+            signal(ref readerMutex);              //reserve exit section - avoids race condition with readers
+            readCount--;                          //indicate you're leaving
+
+            if (readCount == 0)                   //checks if you are last reader leaving
+                signal(ref resourceLock);         //if last, you must release the locked resource
+
+            signal(ref readerMutex);              //release exit section for other readers
+
+            printDetails();
+
+            Console.WriteLine("=> Reader leaving after exit section\n");
+        }
+
+        public void writer(Process P)
+        {
+            //ENTRY SECTION
+            printDetails();
+
+            Console.WriteLine("\tEntry Section");
+            printDetails();
+
+            wait(ref writerMutex);              //reserve entry section for writers - avoids race conditions
+            writeCount++;                       //report yourself as a writer entering
+
+            if (writeCount == 1)                //checks if you're first writer
+                wait(ref readTry);              //if you're first, then you must lock the readers out
+
+            signal(ref writerMutex);            //release entry section
+
+            printDetails();
+
+            //CRITICAL SECTION
+            Console.WriteLine("\tCritical Section");
+
+            wait(ref resourceLock);             //reserve the resource for yourself - prevents other writers from simultaneously editing the shared resource
+            P.activity();                       // writing is performed
+
+            signal(ref resourceLock);           //release file
+
+            printDetails();
+
+            //EXIT SECTION
+
+            Console.WriteLine("\tExit Section");
+
+            wait(ref writerMutex);              //reserve exit section
+            writeCount--;                       //indicate you're leaving
+
+            if (writeCount == 0)                //checks if you're the last writer
+                signal(ref readTry);            //if you're last writer, you must unlock the readers
+
+            signal(ref writerMutex);            //release exit section
+
+            printDetails();
+
+            Console.WriteLine("=> Writer leaving after exit section\n");
+        }
+
+        public void wait(ref int S)
+        {
+            while (S <= 0);
+            S--;
+        }
+
+        public void signal(ref int S)
+        {
+            S++;
+        }
+
+        public void printDetails()
+        {
+            Console.WriteLine("<<<<<<<<<Printing counter and semaphore details>>>>>>>>>");
+            Console.WriteLine("\tNumber of readers (read count): " + readCount);
+            Console.WriteLine("\tNumber of writers (write count): " + writeCount);
+            Console.WriteLine("\tReader Mutex: " + readerMutex);
+            Console.WriteLine("\tWriter Mutex: " + writerMutex);
+            Console.WriteLine("\tTry to read (readTry): " + readTry);
+            Console.WriteLine("\tNumber of readers (read count):" + readCount);
+            Console.WriteLine("\tResource Lock:" + resourceLock + "\n");
+        }
+
+        public void clearVars()
+        {
+            readCount = 0;
+            writeCount = 0;
+            readerMutex = 1;
+            writerMutex = 1;
+            readTry = 1;
+            resourceLock = 1;
+        }
+
+    }
+
+
+    class Process
+    {
+        private bool processType;                       //0 for writer, 1 for reader
+        public static int processNo;                    //global variable for knowing all process numbers
+        private int currProcessNo;                      //private variable for each process to know its number
+        public Process() {
+            processNo = 0;
+        }
+        public Process(bool pt)
+        {
+            processType = pt;
+            processNo++;
+            currProcessNo = processNo;
+        }
+        public void activity()
+        {
+
+        }
+
+        public void print()
+        {
+            if (processType == false)
+                Console.WriteLine("Writer Process P" + currProcessNo);
+            else
+                Console.WriteLine("Reader Process P" + currProcessNo);
+
+            Console.WriteLine();
+        }
+
+    }
+
+} 
+
+
+
+
+//Output
+
+Writer Process P1
+
+Reader Process P2
+
+Writer Process P3
+
+Reader Process P4
+
+Writer Process P5
+
+SCENARIO #1
+1. Reader trying to read
+        Entry Section
+<<<<<<<<<Printing counter and semaphore details>>>>>>>>>
+        Number of readers (read count): 0
+        Number of writers (write count): 0
+        Reader Mutex: 1
+        Writer Mutex: 1
+        Try to read (readTry): 1
+        Number of readers (read count):0
+        Resource Lock:1
+
+<<<<<<<<<Printing counter and semaphore details>>>>>>>>>
+        Number of readers (read count): 1
+        Number of writers (write count): 0
+        Reader Mutex: 1
+        Writer Mutex: 1
+        Try to read (readTry): 1
+        Number of readers (read count):1
+        Resource Lock:0
+
+        Critical Section
+<<<<<<<<<Printing counter and semaphore details>>>>>>>>>
+        Number of readers (read count): 1
+        Number of writers (write count): 0
+        Reader Mutex: 1
+        Writer Mutex: 1
+        Try to read (readTry): 1
+        Number of readers (read count):1
+        Resource Lock:0
+
+        Exit Section
+<<<<<<<<<Printing counter and semaphore details>>>>>>>>>
+        Number of readers (read count): 0
+        Number of writers (write count): 0
+        Reader Mutex: 3
+        Writer Mutex: 1
+        Try to read (readTry): 1
+        Number of readers (read count):0
+        Resource Lock:1
+
+=> Reader leaving after exit section
+
+2. Reader trying to read
+        Entry Section
+<<<<<<<<<Printing counter and semaphore details>>>>>>>>>
+        Number of readers (read count): 0
+        Number of writers (write count): 0
+        Reader Mutex: 3
+        Writer Mutex: 1
+        Try to read (readTry): 1
+        Number of readers (read count):0
+        Resource Lock:1
+
+<<<<<<<<<Printing counter and semaphore details>>>>>>>>>
+        Number of readers (read count): 1
+        Number of writers (write count): 0
+        Reader Mutex: 3
+        Writer Mutex: 1
+        Try to read (readTry): 1
+        Number of readers (read count):1
+        Resource Lock:0
+
+        Critical Section
+<<<<<<<<<Printing counter and semaphore details>>>>>>>>>
+        Number of readers (read count): 1
+        Number of writers (write count): 0
+        Reader Mutex: 3
+        Writer Mutex: 1
+        Try to read (readTry): 1
+        Number of readers (read count):1
+        Resource Lock:0
+
+        Exit Section
+<<<<<<<<<Printing counter and semaphore details>>>>>>>>>
+        Number of readers (read count): 0
+        Number of writers (write count): 0
+        Reader Mutex: 5
+        Writer Mutex: 1
+        Try to read (readTry): 1
+        Number of readers (read count):0
+        Resource Lock:1
+
+=> Reader leaving after exit section
+
+3. Writer trying to write
+<<<<<<<<<Printing counter and semaphore details>>>>>>>>>
+        Number of readers (read count): 0
+        Number of writers (write count): 0
+        Reader Mutex: 5
+        Writer Mutex: 1
+        Try to read (readTry): 1
+        Number of readers (read count):0
+        Resource Lock:1
+
+        Entry Section
+<<<<<<<<<Printing counter and semaphore details>>>>>>>>>
+        Number of readers (read count): 0
+        Number of writers (write count): 0
+        Reader Mutex: 5
+        Writer Mutex: 1
+        Try to read (readTry): 1
+        Number of readers (read count):0
+        Resource Lock:1
+
+<<<<<<<<<Printing counter and semaphore details>>>>>>>>>
+        Number of readers (read count): 0
+        Number of writers (write count): 1
+        Reader Mutex: 5
+        Writer Mutex: 1
+        Try to read (readTry): 0
+        Number of readers (read count):0
+        Resource Lock:1
+
+        Critical Section
+<<<<<<<<<Printing counter and semaphore details>>>>>>>>>
+        Number of readers (read count): 0
+        Number of writers (write count): 1
+        Reader Mutex: 5
+        Writer Mutex: 1
+        Try to read (readTry): 0
+        Number of readers (read count):0
+        Resource Lock:1
+
+        Exit Section
+<<<<<<<<<Printing counter and semaphore details>>>>>>>>>
+        Number of readers (read count): 0
+        Number of writers (write count): 0
+        Reader Mutex: 5
+        Writer Mutex: 1
+        Try to read (readTry): 1
+        Number of readers (read count):0
+        Resource Lock:1
+
+=> Writer leaving after exit section
+
+
+SCENARIO #2
+1. Writer trying to write
+<<<<<<<<<Printing counter and semaphore details>>>>>>>>>
+        Number of readers (read count): 0
+        Number of writers (write count): 0
+        Reader Mutex: 1
+        Writer Mutex: 1
+        Try to read (readTry): 1
+        Number of readers (read count):0
+        Resource Lock:1
+
+        Entry Section
+<<<<<<<<<Printing counter and semaphore details>>>>>>>>>
+        Number of readers (read count): 0
+        Number of writers (write count): 0
+        Reader Mutex: 1
+        Writer Mutex: 1
+        Try to read (readTry): 1
+        Number of readers (read count):0
+        Resource Lock:1
+
+<<<<<<<<<Printing counter and semaphore details>>>>>>>>>
+        Number of readers (read count): 0
+        Number of writers (write count): 1
+        Reader Mutex: 1
+        Writer Mutex: 1
+        Try to read (readTry): 0
+        Number of readers (read count):0
+        Resource Lock:1
+
+        Critical Section
+<<<<<<<<<Printing counter and semaphore details>>>>>>>>>
+        Number of readers (read count): 0
+        Number of writers (write count): 1
+        Reader Mutex: 1
+        Writer Mutex: 1
+        Try to read (readTry): 0
+        Number of readers (read count):0
+        Resource Lock:1
+
+        Exit Section
+<<<<<<<<<Printing counter and semaphore details>>>>>>>>>
+        Number of readers (read count): 0
+        Number of writers (write count): 0
+        Reader Mutex: 1
+        Writer Mutex: 1
+        Try to read (readTry): 1
+        Number of readers (read count):0
+        Resource Lock:1
+
+=> Writer leaving after exit section
+
+2. Reader trying to read
+        Entry Section
+<<<<<<<<<Printing counter and semaphore details>>>>>>>>>
+        Number of readers (read count): 0
+        Number of writers (write count): 0
+        Reader Mutex: 1
+        Writer Mutex: 1
+        Try to read (readTry): 1
+        Number of readers (read count):0
+        Resource Lock:1
+
+<<<<<<<<<Printing counter and semaphore details>>>>>>>>>
+        Number of readers (read count): 1
+        Number of writers (write count): 0
+        Reader Mutex: 1
+        Writer Mutex: 1
+        Try to read (readTry): 1
+        Number of readers (read count):1
+        Resource Lock:0
+
+        Critical Section
+<<<<<<<<<Printing counter and semaphore details>>>>>>>>>
+        Number of readers (read count): 1
+        Number of writers (write count): 0
+        Reader Mutex: 1
+        Writer Mutex: 1
+        Try to read (readTry): 1
+        Number of readers (read count):1
+        Resource Lock:0
+
+        Exit Section
+<<<<<<<<<Printing counter and semaphore details>>>>>>>>>
+        Number of readers (read count): 0
+        Number of writers (write count): 0
+        Reader Mutex: 3
+        Writer Mutex: 1
+        Try to read (readTry): 1
+        Number of readers (read count):0
+        Resource Lock:1
+
+=> Reader leaving after exit section
+
+3. Reader trying to read
+        Entry Section
+<<<<<<<<<Printing counter and semaphore details>>>>>>>>>
+        Number of readers (read count): 0
+        Number of writers (write count): 0
+        Reader Mutex: 3
+        Writer Mutex: 1
+        Try to read (readTry): 1
+        Number of readers (read count):0
+        Resource Lock:1
+
+<<<<<<<<<Printing counter and semaphore details>>>>>>>>>
+        Number of readers (read count): 1
+        Number of writers (write count): 0
+        Reader Mutex: 3
+        Writer Mutex: 1
+        Try to read (readTry): 1
+        Number of readers (read count):1
+        Resource Lock:0
+
+        Critical Section
+<<<<<<<<<Printing counter and semaphore details>>>>>>>>>
+        Number of readers (read count): 1
+        Number of writers (write count): 0
+        Reader Mutex: 3
+        Writer Mutex: 1
+        Try to read (readTry): 1
+        Number of readers (read count):1
+        Resource Lock:0
+
+        Exit Section
+<<<<<<<<<Printing counter and semaphore details>>>>>>>>>
+        Number of readers (read count): 0
+        Number of writers (write count): 0
+        Reader Mutex: 5
+        Writer Mutex: 1
+        Try to read (readTry): 1
+        Number of readers (read count):0
+        Resource Lock:1
+
+=> Reader leaving after exit section
+
+
+SCENARIO #3
+1. Reader trying to read
+<<<<<<<<<Printing counter and semaphore details>>>>>>>>>
+        Number of readers (read count): 0
+        Number of writers (write count): 0
+        Reader Mutex: 1
+        Writer Mutex: 1
+        Try to read (readTry): 1
+        Number of readers (read count):0
+        Resource Lock:1
+
+        Entry Section
+<<<<<<<<<Printing counter and semaphore details>>>>>>>>>
+        Number of readers (read count): 0
+        Number of writers (write count): 0
+        Reader Mutex: 1
+        Writer Mutex: 1
+        Try to read (readTry): 1
+        Number of readers (read count):0
+        Resource Lock:1
+
+<<<<<<<<<Printing counter and semaphore details>>>>>>>>>
+        Number of readers (read count): 0
+        Number of writers (write count): 1
+        Reader Mutex: 1
+        Writer Mutex: 1
+        Try to read (readTry): 0
+        Number of readers (read count):0
+        Resource Lock:1
+
+        Critical Section
+<<<<<<<<<Printing counter and semaphore details>>>>>>>>>
+        Number of readers (read count): 0
+        Number of writers (write count): 1
+        Reader Mutex: 1
+        Writer Mutex: 1
+        Try to read (readTry): 0
+        Number of readers (read count):0
+        Resource Lock:1
+
+        Exit Section
+<<<<<<<<<Printing counter and semaphore details>>>>>>>>>
+        Number of readers (read count): 0
+        Number of writers (write count): 0
+        Reader Mutex: 1
+        Writer Mutex: 1
+        Try to read (readTry): 1
+        Number of readers (read count):0
+        Resource Lock:1
+
+=> Writer leaving after exit section
+
+2. Writer trying to write
+        Entry Section
+<<<<<<<<<Printing counter and semaphore details>>>>>>>>>
+        Number of readers (read count): 0
+        Number of writers (write count): 0
+        Reader Mutex: 1
+        Writer Mutex: 1
+        Try to read (readTry): 1
+        Number of readers (read count):0
+        Resource Lock:1
+
+<<<<<<<<<Printing counter and semaphore details>>>>>>>>>
+        Number of readers (read count): 1
+        Number of writers (write count): 0
+        Reader Mutex: 1
+        Writer Mutex: 1
+        Try to read (readTry): 1
+        Number of readers (read count):1
+        Resource Lock:0
+
+        Critical Section
+<<<<<<<<<Printing counter and semaphore details>>>>>>>>>
+        Number of readers (read count): 1
+        Number of writers (write count): 0
+        Reader Mutex: 1
+        Writer Mutex: 1
+        Try to read (readTry): 1
+        Number of readers (read count):1
+        Resource Lock:0
+
+        Exit Section
+<<<<<<<<<Printing counter and semaphore details>>>>>>>>>
+        Number of readers (read count): 0
+        Number of writers (write count): 0
+        Reader Mutex: 3
+        Writer Mutex: 1
+        Try to read (readTry): 1
+        Number of readers (read count):0
+        Resource Lock:1
+
+=> Reader leaving after exit section
+
+3. Reader trying to read
+        Entry Section
+<<<<<<<<<Printing counter and semaphore details>>>>>>>>>
+        Number of readers (read count): 0
+        Number of writers (write count): 0
+        Reader Mutex: 3
+        Writer Mutex: 1
+        Try to read (readTry): 1
+        Number of readers (read count):0
+        Resource Lock:1
+
+<<<<<<<<<Printing counter and semaphore details>>>>>>>>>
+        Number of readers (read count): 1
+        Number of writers (write count): 0
+        Reader Mutex: 3
+        Writer Mutex: 1
+        Try to read (readTry): 1
+        Number of readers (read count):1
+        Resource Lock:0
+
+        Critical Section
+<<<<<<<<<Printing counter and semaphore details>>>>>>>>>
+        Number of readers (read count): 1
+        Number of writers (write count): 0
+        Reader Mutex: 3
+        Writer Mutex: 1
+        Try to read (readTry): 1
+        Number of readers (read count):1
+        Resource Lock:0
+
+        Exit Section
+<<<<<<<<<Printing counter and semaphore details>>>>>>>>>
+        Number of readers (read count): 0
+        Number of writers (write count): 0
+        Reader Mutex: 5
+        Writer Mutex: 1
+        Try to read (readTry): 1
+        Number of readers (read count):0
+        Resource Lock:1
+
+=> Reader leaving after exit section
+
+
+SCENARIO #4
+1. Reader trying to read
+<<<<<<<<<Printing counter and semaphore details>>>>>>>>>
+        Number of readers (read count): 0
+        Number of writers (write count): 0
+        Reader Mutex: 1
+        Writer Mutex: 1
+        Try to read (readTry): 1
+        Number of readers (read count):0
+        Resource Lock:1
+
+        Entry Section
+<<<<<<<<<Printing counter and semaphore details>>>>>>>>>
+        Number of readers (read count): 0
+        Number of writers (write count): 0
+        Reader Mutex: 1
+        Writer Mutex: 1
+        Try to read (readTry): 1
+        Number of readers (read count):0
+        Resource Lock:1
+
+<<<<<<<<<Printing counter and semaphore details>>>>>>>>>
+        Number of readers (read count): 0
+        Number of writers (write count): 1
+        Reader Mutex: 1
+        Writer Mutex: 1
+        Try to read (readTry): 0
+        Number of readers (read count):0
+        Resource Lock:1
+
+        Critical Section
+<<<<<<<<<Printing counter and semaphore details>>>>>>>>>
+        Number of readers (read count): 0
+        Number of writers (write count): 1
+        Reader Mutex: 1
+        Writer Mutex: 1
+        Try to read (readTry): 0
+        Number of readers (read count):0
+        Resource Lock:1
+
+        Exit Section
+<<<<<<<<<Printing counter and semaphore details>>>>>>>>>
+        Number of readers (read count): 0
+        Number of writers (write count): 0
+        Reader Mutex: 1
+        Writer Mutex: 1
+        Try to read (readTry): 1
+        Number of readers (read count):0
+        Resource Lock:1
+
+=> Writer leaving after exit section
+
+2. Reader trying to read
+        Entry Section
+<<<<<<<<<Printing counter and semaphore details>>>>>>>>>
+        Number of readers (read count): 0
+        Number of writers (write count): 0
+        Reader Mutex: 1
+        Writer Mutex: 1
+        Try to read (readTry): 1
+        Number of readers (read count):0
+        Resource Lock:1
+
+<<<<<<<<<Printing counter and semaphore details>>>>>>>>>
+        Number of readers (read count): 1
+        Number of writers (write count): 0
+        Reader Mutex: 1
+        Writer Mutex: 1
+        Try to read (readTry): 1
+        Number of readers (read count):1
+        Resource Lock:0
+
+        Critical Section
+<<<<<<<<<Printing counter and semaphore details>>>>>>>>>
+        Number of readers (read count): 1
+        Number of writers (write count): 0
+        Reader Mutex: 1
+        Writer Mutex: 1
+        Try to read (readTry): 1
+        Number of readers (read count):1
+        Resource Lock:0
+
+        Exit Section
+<<<<<<<<<Printing counter and semaphore details>>>>>>>>>
+        Number of readers (read count): 0
+        Number of writers (write count): 0
+        Reader Mutex: 3
+        Writer Mutex: 1
+        Try to read (readTry): 1
+        Number of readers (read count):0
+        Resource Lock:1
+
+=> Reader leaving after exit section
+
+3. Writer trying to write
+        Entry Section
+<<<<<<<<<Printing counter and semaphore details>>>>>>>>>
+        Number of readers (read count): 0
+        Number of writers (write count): 0
+        Reader Mutex: 3
+        Writer Mutex: 1
+        Try to read (readTry): 1
+        Number of readers (read count):0
+        Resource Lock:1
+
+<<<<<<<<<Printing counter and semaphore details>>>>>>>>>
+        Number of readers (read count): 1
+        Number of writers (write count): 0
+        Reader Mutex: 3
+        Writer Mutex: 1
+        Try to read (readTry): 1
+        Number of readers (read count):1
+        Resource Lock:0
+
+        Critical Section
+<<<<<<<<<Printing counter and semaphore details>>>>>>>>>
+        Number of readers (read count): 1
+        Number of writers (write count): 0
+        Reader Mutex: 3
+        Writer Mutex: 1
+        Try to read (readTry): 1
+        Number of readers (read count):1
+        Resource Lock:0
+
+        Exit Section
+<<<<<<<<<Printing counter and semaphore details>>>>>>>>>
+        Number of readers (read count): 0
+        Number of writers (write count): 0
+        Reader Mutex: 5
+        Writer Mutex: 1
+        Try to read (readTry): 1
+        Number of readers (read count):0
+        Resource Lock:1
+
+=> Reader leaving after exit section
+
+4. Writer trying to write
+        Entry Section
+<<<<<<<<<Printing counter and semaphore details>>>>>>>>>
+        Number of readers (read count): 0
+        Number of writers (write count): 0
+        Reader Mutex: 5
+        Writer Mutex: 1
+        Try to read (readTry): 1
+        Number of readers (read count):0
+        Resource Lock:1
+
+<<<<<<<<<Printing counter and semaphore details>>>>>>>>>
+        Number of readers (read count): 1
+        Number of writers (write count): 0
+        Reader Mutex: 5
+        Writer Mutex: 1
+        Try to read (readTry): 1
+        Number of readers (read count):1
+        Resource Lock:0
+
+        Critical Section
+<<<<<<<<<Printing counter and semaphore details>>>>>>>>>
+        Number of readers (read count): 1
+        Number of writers (write count): 0
+        Reader Mutex: 5
+        Writer Mutex: 1
+        Try to read (readTry): 1
+        Number of readers (read count):1
+        Resource Lock:0
+
+        Exit Section
+<<<<<<<<<Printing counter and semaphore details>>>>>>>>>
+        Number of readers (read count): 0
+        Number of writers (write count): 0
+        Reader Mutex: 7
+        Writer Mutex: 1
+        Try to read (readTry): 1
+        Number of readers (read count):0
+        Resource Lock:1
+
+=> Reader leaving after exit section
+
+
+SCENARIO #5
+1. Writer trying to write
+<<<<<<<<<Printing counter and semaphore details>>>>>>>>>
+        Number of readers (read count): 0
+        Number of writers (write count): 0
+        Reader Mutex: 1
+        Writer Mutex: 1
+        Try to read (readTry): 1
+        Number of readers (read count):0
+        Resource Lock:1
+
+        Entry Section
+<<<<<<<<<Printing counter and semaphore details>>>>>>>>>
+        Number of readers (read count): 0
+        Number of writers (write count): 0
+        Reader Mutex: 1
+        Writer Mutex: 1
+        Try to read (readTry): 1
+        Number of readers (read count):0
+        Resource Lock:1
+
+<<<<<<<<<Printing counter and semaphore details>>>>>>>>>
+        Number of readers (read count): 0
+        Number of writers (write count): 1
+        Reader Mutex: 1
+        Writer Mutex: 1
+        Try to read (readTry): 0
+        Number of readers (read count):0
+        Resource Lock:1
+
+        Critical Section
+<<<<<<<<<Printing counter and semaphore details>>>>>>>>>
+        Number of readers (read count): 0
+        Number of writers (write count): 1
+        Reader Mutex: 1
+        Writer Mutex: 1
+        Try to read (readTry): 0
+        Number of readers (read count):0
+        Resource Lock:1
+
+        Exit Section
+<<<<<<<<<Printing counter and semaphore details>>>>>>>>>
+        Number of readers (read count): 0
+        Number of writers (write count): 0
+        Reader Mutex: 1
+        Writer Mutex: 1
+        Try to read (readTry): 1
+        Number of readers (read count):0
+        Resource Lock:1
+
+=> Writer leaving after exit section
+
+2. Reader trying to read
+        Entry Section
+<<<<<<<<<Printing counter and semaphore details>>>>>>>>>
+        Number of readers (read count): 0
+        Number of writers (write count): 0
+        Reader Mutex: 1
+        Writer Mutex: 1
+        Try to read (readTry): 1
+        Number of readers (read count):0
+        Resource Lock:1
+
+<<<<<<<<<Printing counter and semaphore details>>>>>>>>>
+        Number of readers (read count): 1
+        Number of writers (write count): 0
+        Reader Mutex: 1
+        Writer Mutex: 1
+        Try to read (readTry): 1
+        Number of readers (read count):1
+        Resource Lock:0
+
+        Critical Section
+<<<<<<<<<Printing counter and semaphore details>>>>>>>>>
+        Number of readers (read count): 1
+        Number of writers (write count): 0
+        Reader Mutex: 1
+        Writer Mutex: 1
+        Try to read (readTry): 1
+        Number of readers (read count):1
+        Resource Lock:0
+
+        Exit Section
+<<<<<<<<<Printing counter and semaphore details>>>>>>>>>
+        Number of readers (read count): 0
+        Number of writers (write count): 0
+        Reader Mutex: 3
+        Writer Mutex: 1
+        Try to read (readTry): 1
+        Number of readers (read count):0
+        Resource Lock:1
+
+=> Reader leaving after exit section
+
+3. Reader trying to read
+        Entry Section
+<<<<<<<<<Printing counter and semaphore details>>>>>>>>>
+        Number of readers (read count): 0
+        Number of writers (write count): 0
+        Reader Mutex: 3
+        Writer Mutex: 1
+        Try to read (readTry): 1
+        Number of readers (read count):0
+        Resource Lock:1
+
+<<<<<<<<<Printing counter and semaphore details>>>>>>>>>
+        Number of readers (read count): 1
+        Number of writers (write count): 0
+        Reader Mutex: 3
+        Writer Mutex: 1
+        Try to read (readTry): 1
+        Number of readers (read count):1
+        Resource Lock:0
+
+        Critical Section
+<<<<<<<<<Printing counter and semaphore details>>>>>>>>>
+        Number of readers (read count): 1
+        Number of writers (write count): 0
+        Reader Mutex: 3
+        Writer Mutex: 1
+        Try to read (readTry): 1
+        Number of readers (read count):1
+        Resource Lock:0
+
+        Exit Section
+<<<<<<<<<Printing counter and semaphore details>>>>>>>>>
+        Number of readers (read count): 0
+        Number of writers (write count): 0
+        Reader Mutex: 5
+        Writer Mutex: 1
+        Try to read (readTry): 1
+        Number of readers (read count):0
+        Resource Lock:1
+
+=> Reader leaving after exit section
+
+4. Writer trying to write
+        Entry Section
+<<<<<<<<<Printing counter and semaphore details>>>>>>>>>
+        Number of readers (read count): 0
+        Number of writers (write count): 0
+        Reader Mutex: 5
+        Writer Mutex: 1
+        Try to read (readTry): 1
+        Number of readers (read count):0
+        Resource Lock:1
+
+<<<<<<<<<Printing counter and semaphore details>>>>>>>>>
+        Number of readers (read count): 1
+        Number of writers (write count): 0
+        Reader Mutex: 5
+        Writer Mutex: 1
+        Try to read (readTry): 1
+        Number of readers (read count):1
+        Resource Lock:0
+
+        Critical Section
+<<<<<<<<<Printing counter and semaphore details>>>>>>>>>
+        Number of readers (read count): 1
+        Number of writers (write count): 0
+        Reader Mutex: 5
+        Writer Mutex: 1
+        Try to read (readTry): 1
+        Number of readers (read count):1
+        Resource Lock:0
+
+        Exit Section
+<<<<<<<<<Printing counter and semaphore details>>>>>>>>>
+        Number of readers (read count): 0
+        Number of writers (write count): 0
+        Reader Mutex: 7
+        Writer Mutex: 1
+        Try to read (readTry): 1
+        Number of readers (read count):0
+        Resource Lock:1
+
+=> Reader leaving after exit section
+
+
+SCENARIO #5
+1. Reader trying to read
+<<<<<<<<<Printing counter and semaphore details>>>>>>>>>
+        Number of readers (read count): 0
+        Number of writers (write count): 0
+        Reader Mutex: 1
+        Writer Mutex: 1
+        Try to read (readTry): 1
+        Number of readers (read count):0
+        Resource Lock:1
+
+        Entry Section
+<<<<<<<<<Printing counter and semaphore details>>>>>>>>>
+        Number of readers (read count): 0
+        Number of writers (write count): 0
+        Reader Mutex: 1
+        Writer Mutex: 1
+        Try to read (readTry): 1
+        Number of readers (read count):0
+        Resource Lock:1
+
+<<<<<<<<<Printing counter and semaphore details>>>>>>>>>
+        Number of readers (read count): 0
+        Number of writers (write count): 1
+        Reader Mutex: 1
+        Writer Mutex: 1
+        Try to read (readTry): 0
+        Number of readers (read count):0
+        Resource Lock:1
+
+        Critical Section
+<<<<<<<<<Printing counter and semaphore details>>>>>>>>>
+        Number of readers (read count): 0
+        Number of writers (write count): 1
+        Reader Mutex: 1
+        Writer Mutex: 1
+        Try to read (readTry): 0
+        Number of readers (read count):0
+        Resource Lock:1
+
+        Exit Section
+<<<<<<<<<Printing counter and semaphore details>>>>>>>>>
+        Number of readers (read count): 0
+        Number of writers (write count): 0
+        Reader Mutex: 1
+        Writer Mutex: 1
+        Try to read (readTry): 1
+        Number of readers (read count):0
+        Resource Lock:1
+
+=> Writer leaving after exit section
+
+2. Writer trying to writer
+        Entry Section
+<<<<<<<<<Printing counter and semaphore details>>>>>>>>>
+        Number of readers (read count): 0
+        Number of writers (write count): 0
+        Reader Mutex: 1
+        Writer Mutex: 1
+        Try to read (readTry): 1
+        Number of readers (read count):0
+        Resource Lock:1
+
+<<<<<<<<<Printing counter and semaphore details>>>>>>>>>
+        Number of readers (read count): 1
+        Number of writers (write count): 0
+        Reader Mutex: 1
+        Writer Mutex: 1
+        Try to read (readTry): 1
+        Number of readers (read count):1
+        Resource Lock:0
+
+        Critical Section
+<<<<<<<<<Printing counter and semaphore details>>>>>>>>>
+        Number of readers (read count): 1
+        Number of writers (write count): 0
+        Reader Mutex: 1
+        Writer Mutex: 1
+        Try to read (readTry): 1
+        Number of readers (read count):1
+        Resource Lock:0
+
+        Exit Section
+<<<<<<<<<Printing counter and semaphore details>>>>>>>>>
+        Number of readers (read count): 0
+        Number of writers (write count): 0
+        Reader Mutex: 3
+        Writer Mutex: 1
+        Try to read (readTry): 1
+        Number of readers (read count):0
+        Resource Lock:1
+
+=> Reader leaving after exit section
+
+3. Reader trying to read
+        Entry Section
+<<<<<<<<<Printing counter and semaphore details>>>>>>>>>
+        Number of readers (read count): 0
+        Number of writers (write count): 0
+        Reader Mutex: 3
+        Writer Mutex: 1
+        Try to read (readTry): 1
+        Number of readers (read count):0
+        Resource Lock:1
+
+<<<<<<<<<Printing counter and semaphore details>>>>>>>>>
+        Number of readers (read count): 1
+        Number of writers (write count): 0
+        Reader Mutex: 3
+        Writer Mutex: 1
+        Try to read (readTry): 1
+        Number of readers (read count):1
+        Resource Lock:0
+
+        Critical Section
+<<<<<<<<<Printing counter and semaphore details>>>>>>>>>
+        Number of readers (read count): 1
+        Number of writers (write count): 0
+        Reader Mutex: 3
+        Writer Mutex: 1
+        Try to read (readTry): 1
+        Number of readers (read count):1
+        Resource Lock:0
+
+        Exit Section
+<<<<<<<<<Printing counter and semaphore details>>>>>>>>>
+        Number of readers (read count): 0
+        Number of writers (write count): 0
+        Reader Mutex: 5
+        Writer Mutex: 1
+        Try to read (readTry): 1
+        Number of readers (read count):0
+        Resource Lock:1
+
+=> Reader leaving after exit section
+
+4. Writer trying to write
+        Entry Section
+<<<<<<<<<Printing counter and semaphore details>>>>>>>>>
+        Number of readers (read count): 0
+        Number of writers (write count): 0
+        Reader Mutex: 5
+        Writer Mutex: 1
+        Try to read (readTry): 1
+        Number of readers (read count):0
+        Resource Lock:1
+
+<<<<<<<<<Printing counter and semaphore details>>>>>>>>>
+        Number of readers (read count): 1
+        Number of writers (write count): 0
+        Reader Mutex: 5
+        Writer Mutex: 1
+        Try to read (readTry): 1
+        Number of readers (read count):1
+        Resource Lock:0
+
+        Critical Section
+<<<<<<<<<Printing counter and semaphore details>>>>>>>>>
+        Number of readers (read count): 1
+        Number of writers (write count): 0
+        Reader Mutex: 5
+        Writer Mutex: 1
+        Try to read (readTry): 1
+        Number of readers (read count):1
+        Resource Lock:0
+
+        Exit Section
+<<<<<<<<<Printing counter and semaphore details>>>>>>>>>
+        Number of readers (read count): 0
+        Number of writers (write count): 0
+        Reader Mutex: 7
+        Writer Mutex: 1
+        Try to read (readTry): 1
+        Number of readers (read count):0
+        Resource Lock:1
+
+=> Reader leaving after exit section
+
+
